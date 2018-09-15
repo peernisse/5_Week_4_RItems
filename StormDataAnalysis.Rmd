@@ -9,11 +9,6 @@ output:
                 toc: TRUE
                 toc_float: TRUE
                 code_folding: hide
-
-
-
-
-
 ---
 
 ```{r setup, include=TRUE, echo=TRUE, warning= FALSE, results='hide'}
@@ -25,12 +20,16 @@ knitr::opts_chunk$set(echo = TRUE,warning = FALSE,include=TRUE,error = FALSE)
 
 Storms and other severe weather events can cause both public health and economic problems for communities and municipalities. Many severe events can result in fatalities, injuries, and property damage, and preventing such outcomes to the extent possible is a key concern.
 
-This project involves exploring the U.S. National Oceanic and Atmospheric Administration's (NOAA) storm database. This database tracks characteristics of major storms and weather events in the United States, including when and where they occur, as well as estimates of any fatalities, injuries, and property damage.
+This project explored the U.S. National Oceanic and Atmospheric Administration's (NOAA) storm databaseto estimate likelihood of fatalities, injuries, and property damage given a certain storm event type.
 
 This analysis addresses the following objectives/questions:
 
 1. Across the United States, which types of events (as indicated in the EVTYPE variable) are most harmful with respect to population health?
 2. Across the United States, which types of events have the greatest economic consequences?
+
+In summary, human health, as assessed by injury and fatality data, were most likely in cases of tsunami, and extreme weather events such as fog and stormy/icy weather, as well as extreme heat or extreme cold. Property damage was highest in events of hurricane, severe storms, drought and floods.
+
+The analysis process and results are presented in the following sections.
 
 #Data Processing
 
@@ -40,7 +39,7 @@ Data and supporting information for the analysis are sourced from the National O
 * [Storm Data Documentation](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf)
 * [National Climatic Data Center Storm Events FAQ](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2FNCDC%20Storm%20Events-FAQ%20Page.pdf)
 
-##Data Import and Cleanup
+##Data Import
 The raw data were imported in R using the RStudio text editor. Review the code chunk below to see the download code. 
 
 <!--Data Import-->
@@ -52,23 +51,26 @@ library(knitr)
 
 #Connect and download data file
 #One time only to get csv file uncomment to run
-#download.file('https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2',destfile = './data/rawData.csv')
+download.file('https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2',destfile = './data/rawData.csv')
 
 #One time only uncomment to run
-#rawData<-read.csv('./data/rawData.csv',stringsAsFactors = FALSE)
+rawData<-read.csv('./data/rawData.csv',stringsAsFactors = FALSE)
 
 ```
 
-#Data Analysis Methods
-The following questions are the objective of this analysis:
+##Data Cleanup
 
-**Question 1:** *Across the United States, which types of events (as indicated in the EVTYPE variable) are most harmful with respect to population health?*
+Data were processed as follows:
 
-**Question 2:** *Across the United States, which types of events have the greatest economic consequences?*
+1. Separate injury and fatality data from property damage data.
+2. Remove any event types (EVTYPE) that did not result in at least one injury, fatality, or property damage.
+3. Summarize the totals of results by event type, and transform property damage numbers into dollars based on the multiplier column PROPDMGEXP.
+4. Remove any records with only a single event for that event type.
+5. Manually re-group similar event types to address differences in spelleg and context (i.e., consolidate duplicate information into common category names)
+6. Calculate the relative likelihood of injury or fatality as the number of recorded incidents divided by the number of weather events in that event type.
+7. Calculate average property damage in dollars as the number of dollars divided by the number of weather events in that event type.
 
-The approach used to ascertain a response to these questions from the given data was is as follows:
-
-The raw data were culled to include only necessary columns and to remove any event types that did not result in either 1) fatality, 2) injury, or 3) property damage.
+###Data reduction, calculations, and category consolidation. 
 
 
 ```{r data cleanup, cache=TRUE}
@@ -92,26 +94,252 @@ analData<-rawData %>%
         group_by(EVTYPE) %>% 
         summarise(MinDate = min(DATE), MaxDate = max(DATE),NumberofEvents = length(DATE),SumFatality = sum(FATALITIES), SumInjury = sum(INJURIES), SumPropertyDamage = sum(DamageDollars))
 
+#Separate human health and property damage data and remove if no events, or if number of events is 1
+hhData<-analData %>% 
+        select(EVTYPE,MinDate,MaxDate,NumberofEvents,SumFatality,SumInjury) %>% 
+        filter(SumFatality > 0 | SumInjury > 0, NumberofEvents > 1)
+
+pdData<-analData %>% 
+        select(EVTYPE,MinDate,MaxDate,NumberofEvents,SumPropertyDamage) %>% 
+        filter(SumPropertyDamage > 0 , NumberofEvents > 1)
+
+#Create unique list of event types to build lookup
+lookup<-rbind(hhData[,c(1,4)], pdData[,c(1,4)]) 
+lookup<-unique(arrange(lookup,EVTYPE))
+
+#Create lookup merge new event tyoe column to merge back into data frames
+lookup<-lookup %>% 
+        mutate(newEventType = case_when(
+                EVTYPE == ' TSTM WIND' ~ 'WIND',
+                EVTYPE == 'BRUSH FIRE' ~ 'WILDFIRE',
+                EVTYPE == 'Coastal Flood' ~ 'COASTAL FLOOD',
+                EVTYPE == 'Coastal Flooding' ~ 'COASTAL FLOOD',
+                EVTYPE == 'COASTAL FLOODING' ~ 'COASTAL FLOOD',
+                EVTYPE == 'COASTAL FLOODING/EROSION' ~ 'COASTAL FLOOD',
+                EVTYPE == 'Cold' ~ 'EXTREME COLD',
+                EVTYPE == 'COLD/WIND CHILL' ~ 'EXTREME COLD',
+                EVTYPE == 'DRY MICROBURST' ~ 'DUST STORM',
+                EVTYPE == 'Dust Devil' ~ 'DUST STORM',
+                EVTYPE == 'DUST DEVIL' ~ 'DUST STORM',
+                EVTYPE == 'Erosion/Cstl Flood' ~ 'COASTAL FLOOD',
+                EVTYPE == 'EXCESSIVE HEAT' ~ 'EXTREME HEAT',
+                EVTYPE == 'EXTREME COLD/WIND CHILL' ~ 'EXTREME COLD',
+                EVTYPE == 'EXTREME WINDCHILL' ~ 'EXTREME COLD',
+                EVTYPE == 'EXCESSIVE SNOW' ~ 'BLIZZARD',
+                EVTYPE == 'FLASH FLOOD - HEAVY RAIN' ~ 'FLASH FLOOD',
+                EVTYPE == 'FLASH FLOOD FROM ICE JAMS' ~ 'FLASH FLOOD',
+                EVTYPE == 'FLASH FLOOD/FLOOD' ~ 'FLASH FLOOD',
+                EVTYPE == 'FLASH FLOODING' ~ 'FLASH FLOOD',
+                EVTYPE == 'FLASH FLOODING/FLOOD' ~ 'FLASH FLOOD',
+                EVTYPE == 'FLASH FLOODS' ~ 'FLASH FLOOD',
+                EVTYPE == 'FLOOD/FLASH FLOOD' ~ 'FLASH FLOOD',
+                EVTYPE == 'FLOODING' ~ 'FLOOD',
+                EVTYPE == 'FLOODS' ~ 'FLOOD',
+                EVTYPE == 'DENSE FOG' ~ 'FOG',
+                EVTYPE == 'FREEZING FOG' ~ 'FOG',
+                EVTYPE == 'FREEZE' ~ 'ICE STORM',
+                EVTYPE == 'Freezing Drizzle' ~ 'ICE STORM',
+                EVTYPE == 'FREEZING DRIZZLE' ~ 'ICE STORM',
+                EVTYPE == 'FREEZING RAIN' ~ 'ICE STORM',
+                EVTYPE == 'FREEZING RAIN/SNOW' ~ 'ICE STORM',
+                EVTYPE == 'FROST/FREEZE' ~ 'ICE STORM',
+                EVTYPE == 'FUNNEL CLOUD' ~ 'TORNADO',
+                EVTYPE == 'Glaze' ~ 'ICE STORM',
+                EVTYPE == 'GLAZE' ~ 'ICE STORM',
+                EVTYPE == 'GLAZE ICE' ~ 'ICE STORM',
+                EVTYPE == 'gradient wind' ~ 'WIND',
+                EVTYPE == 'Gradient wind' ~ 'WIND',
+                EVTYPE == 'GROUND BLIZZARD' ~ 'BLIZZARD',
+                EVTYPE == 'GUSTNADO' ~ 'TORNADO',
+                EVTYPE == 'GUSTY WIND' ~ 'WIND',
+                EVTYPE == 'Gusty Winds' ~ 'WIND',
+                EVTYPE == 'GUSTY WINDS' ~ 'WIND',
+                EVTYPE == 'HAIL 175' ~ 'HAIL',
+                EVTYPE == 'HAIL 275' ~ 'HAIL',
+                EVTYPE == 'HAILSTORM' ~ 'HAIL',
+                EVTYPE == 'HEAT' ~ 'EXTREME HEAT',
+                EVTYPE == 'HEAT WAVE' ~ 'EXTREME HEAT',
+                EVTYPE == 'HEAVY MIX' ~ 'RAIN',
+                EVTYPE == 'HEAVY RAINS/FLOODING' ~ 'RAIN',
+                EVTYPE == 'HEAVY SNOW' ~ 'HEAVY SNOW',
+                EVTYPE == 'HEAVY SNOW-SQUALLS' ~ 'BLIZZARD',
+                EVTYPE == 'HEAVY SNOW SQUALLS' ~ 'BLIZZARD',
+                EVTYPE == 'HEAVY SNOW/ICE' ~ 'BLIZZARD',
+                EVTYPE == 'HEAVY SNOW/SQUALLS' ~ 'BLIZZARD',
+                EVTYPE == 'HEAVY RAIN' ~ 'RAIN',
+                EVTYPE == 'HEAVY RAINS' ~ 'RAIN',
+                EVTYPE == 'HEAVY SURF/HIGH SURF' ~ 'HEAVY SURF',
+                EVTYPE == 'HIGH SEAS' ~ 'HEAVY SURF',
+                EVTYPE == 'High Surf' ~ 'HEAVY SURF',
+                EVTYPE == 'HIGH SURF' ~ 'HEAVY SURF',
+                EVTYPE == 'HIGH WATER' ~ 'FLOOD',
+                EVTYPE == 'HIGH WIND' ~ 'WIND',
+                EVTYPE == 'HIGH WIND (G40)' ~ 'WIND',
+                EVTYPE == 'HIGH WIND DAMAGE' ~ 'WIND',
+                EVTYPE == 'HIGH WINDS' ~ 'WIND',
+                EVTYPE == 'HIGH WINDS/COLD' ~ 'BLIZZARD',
+                EVTYPE == 'HIGH WINDS/SNOW' ~ 'BLIZZARD',
+                EVTYPE == 'HURRICANE-GENERATED SWELLS' ~ 'HURRICANE',
+                EVTYPE == 'HURRICANE ERIN' ~ 'HURRICANE',
+                EVTYPE == 'HURRICANE OPAL' ~ 'HURRICANE',
+                EVTYPE == 'HURRICANE/TYPHOON' ~ 'HURRICANE',
+                EVTYPE == 'ICE' ~ 'ICE STORM',
+                EVTYPE == 'ICE FLOES' ~ 'FLOOD',
+                EVTYPE == 'ICE JAM FLOODING' ~ 'FLOOD',
+                EVTYPE == 'ICE STORM' ~ 'ICE STORM',
+                EVTYPE == 'ICY ROADS' ~ 'ICE STORM',
+                EVTYPE == 'LAKE-EFFECT SNOW' ~ 'HEAVY SNOW',
+                EVTYPE == 'LAKE EFFECT SNOW' ~ 'HEAVY SNOW',
+                EVTYPE == 'LAKESHORE FLOOD' ~ 'FLOOD',
+                EVTYPE == 'LANDSLIDE' ~ 'LANDSLIDE',
+                EVTYPE == 'LANDSLIDES' ~ 'LANDSLIDE',
+                EVTYPE == 'LANDSPOUT' ~ 'TORNADO',
+                EVTYPE == 'LIGHT SNOW' ~ 'HEAVY SNOW',
+                EVTYPE == 'LIGHTNING' ~ 'LIGHTNING',
+                EVTYPE == 'MAJOR FLOOD' ~ 'FLOOD',
+                EVTYPE == 'MARINE HAIL' ~ 'HAIL',
+                EVTYPE == 'LIGHT FREEZING RAIN' ~ 'ICE STORM',
+                EVTYPE == 'Light Snow' ~ 'HEAVY SNOW',
+                EVTYPE == 'MARINE HIGH WIND' ~ 'WIND',
+                EVTYPE == 'MARINE STRONG WIND' ~ 'WIND',
+                EVTYPE == 'MARINE THUNDERSTORM WIND' ~ 'WIND',
+                EVTYPE == 'MARINE TSTM WIND' ~ 'WIND',
+                EVTYPE == 'MICROBURST' ~ 'WIND',
+                EVTYPE == 'Mixed Precipitation' ~ 'RAIN',
+                EVTYPE == 'MIXED PRECIPITATION' ~ 'RAIN',
+                EVTYPE == 'MUD SLIDE' ~ 'LANDSLIDE',
+                EVTYPE == 'MUDSLIDE' ~ 'LANDSLIDE',
+                EVTYPE == 'OTHER' ~ 'OTHER',
+                EVTYPE == 'RAIN' ~ 'RAIN',
+                EVTYPE == 'RECORD COLD' ~ 'EXTREME COLD',
+                EVTYPE == 'RECORD SNOW' ~ 'HEAVY SNOW',
+                EVTYPE == 'RIP CURRENT' ~ 'HEAVY SURF',
+                EVTYPE == 'RIP CURRENTS' ~ 'HEAVY SURF',
+                EVTYPE == 'RIVER AND STREAM FLOOD' ~ 'FLOOD',
+                EVTYPE == 'RIVER FLOOD' ~ 'FLOOD',
+                EVTYPE == 'River Flooding' ~ 'FLOOD',
+                EVTYPE == 'RIVER FLOODING' ~ 'FLOOD',
+                EVTYPE == 'SEICHE' ~ 'FLOOD',
+                EVTYPE == 'SEVERE THUNDERSTORM' ~ 'THUNDERSTORM',
+                EVTYPE == 'SEVERE THUNDERSTORM WINDS' ~ 'WIND',
+                EVTYPE == 'SEVERE THUNDERSTORMS' ~ 'THUNDERSTORM',
+                EVTYPE == 'SMALL HAIL' ~ 'HAIL',
+                EVTYPE == 'Snow' ~ 'HEAVY SNOW',
+                EVTYPE == 'SNOW' ~ 'HEAVY SNOW',
+                EVTYPE == 'SNOW AND HEAVY SNOW' ~ 'HEAVY SNOW',
+                EVTYPE == 'SNOW FREEZING RAIN' ~ 'BLIZZARD',
+                EVTYPE == 'SNOW SQUALL' ~ 'BLIZZARD',
+                EVTYPE == 'Snow Squalls' ~ 'BLIZZARD',
+                EVTYPE == 'SNOW SQUALLS' ~ 'BLIZZARD',
+                EVTYPE == 'SNOW/COLD' ~ 'BLIZZARD',
+                EVTYPE == 'SNOW/FREEZING RAIN' ~ 'BLIZZARD',
+                EVTYPE == 'SNOW/HIGH WINDS' ~ 'BLIZZARD',
+                EVTYPE == 'SNOW/ICE STORM' ~ 'ICE STORM',
+                EVTYPE == 'SNOW/SLEET' ~ 'BLIZZARD',
+                EVTYPE == 'SNOW/SLEET/FREEZING RAIN' ~ 'ICE STORM',
+                EVTYPE == 'SNOWMELT FLOODING' ~ 'FLOOD',
+                EVTYPE == 'STORM SURGE' ~ 'FLOOD',
+                EVTYPE == 'STORM SURGE/TIDE' ~ 'FLOOD',
+                EVTYPE == 'Strong Wind' ~ 'WIND',
+                EVTYPE == 'STRONG WIND' ~ 'WIND',
+                EVTYPE == 'STRONG WINDS' ~ 'WIND',
+                EVTYPE == 'THUNDERSTORM' ~ 'THUNDERSTORM',
+                EVTYPE == 'THUNDERSTORM  WINDS' ~ 'WIND',
+                EVTYPE == 'THUNDERSTORM WIND' ~ 'WIND',
+                EVTYPE == 'THUNDERSTORM WIND 60 MPH' ~ 'WIND',
+                EVTYPE == 'THUNDERSTORM WIND/ TREES' ~ 'WIND',
+                EVTYPE == 'THUNDERSTORM WINDS' ~ 'WIND',
+                EVTYPE == 'THUNDERSTORM WINDS HAIL' ~ 'HAIL',
+                EVTYPE == 'THUNDERSTORM WINDS LIGHTNING' ~ 'LIGHTNING',
+                EVTYPE == 'THUNDERSTORM WINDS/ FLOOD' ~ 'FLOOD',
+                EVTYPE == 'THUNDERSTORM WINDS/HAIL' ~ 'HAIL',
+                EVTYPE == 'THUNDERSTORM WINDSS' ~ 'WIND',
+                EVTYPE == 'THUNDERSTORMS WIND' ~ 'WIND',
+                EVTYPE == 'THUNDERSTORMS WINDS' ~ 'WIND',
+                EVTYPE == 'THUNDERTORM WINDS' ~ 'WIND',
+                EVTYPE == 'TIDAL FLOODING' ~ 'COASTAL FLOOD',
+                EVTYPE == 'TORNADO' ~ 'TORNADO',
+                EVTYPE == 'TORNADO F0' ~ 'TORNADO',
+                EVTYPE == 'TORNADO F1' ~ 'TORNADO',
+                EVTYPE == 'TORNADO F2' ~ 'TORNADO',
+                EVTYPE == 'TORNADO F3' ~ 'TORNADO',
+                EVTYPE == 'TROPICAL DEPRESSION' ~ 'HURRICANE',
+                EVTYPE == 'TROPICAL STORM' ~ 'HURRICANE',
+                EVTYPE == 'TROPICAL STORM JERRY' ~ 'HURRICANE',
+                EVTYPE == 'TSTM WIND' ~ 'WIND',
+                EVTYPE == 'TSTM WIND (G40)' ~ 'WIND',
+                EVTYPE == 'TSTM WIND (G45)' ~ 'WIND',
+                EVTYPE == 'TSTM WIND 55' ~ 'WIND',
+                EVTYPE == 'TSTM WIND/HAIL' ~ 'HAIL',
+                EVTYPE == 'TSTM WINDS' ~ 'WIND',
+                EVTYPE == 'TSUNAMI' ~ 'TSUNAMI',
+                EVTYPE == 'TYPHOON' ~ 'HURRICANE',
+                EVTYPE == 'URBAN FLOOD' ~ 'FLOOD',
+                EVTYPE == 'URBAN FLOODING' ~ 'FLOOD',
+                EVTYPE == 'URBAN FLOODS' ~ 'FLOOD',
+                EVTYPE == 'URBAN/SMALL STREAM FLOOD' ~ 'FLOOD',
+                EVTYPE == 'URBAN/SML STREAM FLD' ~ 'FLOOD',
+                EVTYPE == 'VOLCANIC ASH' ~ 'VOLCANIC ASH',
+                EVTYPE == 'WATERSPOUT' ~ 'WATERSPOUT',
+                EVTYPE == 'WATERSPOUT-' ~ 'WATERSPOUT',
+                EVTYPE == 'WATERSPOUT/TORNADO' ~ 'WATERSPOUT',
+                EVTYPE == 'WET MICROBURST' ~ 'WET MICROBURST',
+                EVTYPE == 'WILD FIRES' ~ 'WILDFIRE',
+                EVTYPE == 'WILD/FOREST FIRE' ~ 'WILDFIRE',
+                EVTYPE == 'WILDFIRE' ~ 'WILDFIRE',
+                EVTYPE == 'WILDFIRES' ~ 'WILDFIRE',
+                EVTYPE == 'WIND' ~ 'WIND',
+                EVTYPE == 'WIND DAMAGE' ~ 'WIND',
+                EVTYPE == 'WINDS' ~ 'WIND',
+                EVTYPE == 'WINTER STORM' ~ 'BLIZZARD',
+                EVTYPE == 'WINTER WEATHER' ~ 'BLIZZARD',
+                EVTYPE == 'WINTER WEATHER/MIX' ~ 'BLIZZARD'
+                
+        ))
+
+lookup$newEventType<-ifelse(is.na(lookup$newEventType),lookup$EVTYPE,lookup$newEventType)
+
+
+#Merge new consolidated values into both dataframes
+hhData<-merge(hhData,lookup, on='EVTYPE')
+pdData<-merge(pdData,lookup, on='EVTYPE')
+
+
+
+
+
 
 ```
 
 
-Now the data have been grouped by event type, and any event types which have resulted in no human health consequences or property damage have been removed from the dataset. This leaves 93 event types that have historically been observed to have effects on one or more of the three parameters (i.e., fatality, injury, roperty damage). The number of observed effects in each of the three categories has been totalled by event type.
+###Calculate human health impact likelihood, and average property damage per event type.
 
-Because the number of effects alone do not describe the likelihood that a particular storm event type will result in either of these three effects, another data manipulation required is to calculate the likelihood of these effects ocurring as a percentage of times they have ocurred per weather event (i.e., number of observed effects / number of storm type incidents).
+```{r calc human health likelihood}
+#Summarize based on reduced event types and calculate likelihood based on number of effects per event
+hhResultsData<-hhData %>% 
+        group_by(newEventType) %>% 
+        summarize(SumEvents = sum(NumberofEvents),
+                  SumFatalies = sum(SumFatality),
+                  SumInjuries = sum(SumInjury)
+                  
+                  ) %>% 
+        mutate(
+                InjuryLikelihood = round((SumInjuries/SumEvents),3),
+               FatalityLikelihood = round((SumFatalies/SumEvents),3)
+               )
 
-Finally, a category called HumanHealthLikelihood was created using a 0.5-weighted injury value added to fatality value as follows: HumanHealthLikelihood = SumFatality + 0.5*SumInjury)/NumberofEvents. This value is meant to represent overall effect on human health.
+pdResultsData<-pdData %>% 
+        group_by(newEventType) %>% 
+        summarize(SumEvents = sum(NumberofEvents),
+                  SumPropertyDamages = sum(SumPropertyDamage)
+                  
+                  ) %>% 
+        mutate(
+                PropDamageAve = round((SumPropertyDamages/SumEvents),3)
+                
+        )
+        
 
-```{r calc likelihood}
-
-resultsData<-analData %>% 
-        filter(NumberofEvents > 1) %>% 
-        mutate(InjuryLikelihood = round(SumInjury/NumberofEvents,3),
-               FatalityLikelihood = round(SumFatality/NumberofEvents,3),
-               HumanHealthLikelihood = round((SumFatality + 0.25*SumInjury)/NumberofEvents,3),
-               PropDamageLikelihood = round(SumPropertyDamage/NumberofEvents,3)) %>% 
-        select(EVTYPE,HumanHealthLikelihood,FatalityLikelihood,InjuryLikelihood,PropDamageLikelihood) %>% 
-        arrange(desc(HumanHealthLikelihood,FatalityLikelihood,InjuryLikelihood,PropDamageLikelihood))
 
 
 ```
@@ -119,49 +347,33 @@ resultsData<-analData %>%
 
 #Results
 
-**Table 1.** Summary of impacts by event type.
-```{r table 1}
-kData<-arrange(resultsData,EVTYPE)
-kable(kData,format="markdown")
-
-```
-
-
-**Figure 1.** Summary of event type effect on human health likelihood (human health impact/event). Values calculated as weighted sum of fatalities + 0.25*injuries/number of events. (Top 50 event types shown out of 135)
-
+**Figure 1.** Summary of injury impacts by event type.
 ```{r figure 1}
-gdata<-resultsData %>% select(EVTYPE, HumanHealthLikelihood) %>% arrange(HumanHealthLikelihood)
+gdata<-hhResultsData %>% select(newEventType, InjuryLikelihood) %>% arrange(InjuryLikelihood)
 
-gdata<-gdata[(nrow(gdata)-49):nrow(gdata),]
-
-
-levs<-gdata$EVTYPE
-gdata$EVTYPE<-factor(gdata$EVTYPE,levels=levs)
+levs<-gdata$newEventType
+gdata$newEventType<-factor(gdata$newEventType,levels=levs)
 
 
-g<- ggplot(gdata,aes(EVTYPE,HumanHealthLikelihood))+
+g<- ggplot(gdata,aes(newEventType,InjuryLikelihood))+
         geom_col(fill='orange')+
         coord_flip()+
         theme(axis.text.y = element_text(size=6))
 g
+
 ```
 
 
-
-
-**Figure 2.** Summary of event type effect on property damage likelihood (dollars/event). (Top 50 event types shown out of 135)
+**Figure 2.** Summary of fatality impacts by event type.
 
 ```{r figure 2}
-gdata<-resultsData %>% select(EVTYPE, PropDamageLikelihood) %>% arrange(PropDamageLikelihood)
+gdata<-hhResultsData %>% select(newEventType, FatalityLikelihood) %>% arrange(FatalityLikelihood)
 
-gdata<-gdata[(nrow(gdata)-49):nrow(gdata),]
-
-
-levs<-gdata$EVTYPE
-gdata$EVTYPE<-factor(gdata$EVTYPE,levels=levs)
+levs<-gdata$newEventType
+gdata$newEventType<-factor(gdata$newEventType,levels=levs)
 
 
-g<- ggplot(gdata,aes(EVTYPE,PropDamageLikelihood))+
+g<- ggplot(gdata,aes(newEventType,FatalityLikelihood))+
         geom_col(fill='wheat')+
         coord_flip()+
         theme(axis.text.y = element_text(size=6))
@@ -169,7 +381,25 @@ g
 ```
 
 
-#References
+
+
+**Figure 3.** Summary of event type effect on property damage likelihood (dollars/event). (Top 50 event types shown out of 135)
+
+```{r figure 3}
+gdata<-pdResultsData %>% select(newEventType, PropDamageAve) %>% arrange(PropDamageAve)
+
+levs<-gdata$newEventType
+gdata$newEventType<-factor(gdata$newEventType,levels=levs)
+
+
+g<- ggplot(gdata,aes(newEventType,PropDamageAve))+
+        geom_col(fill='salmon')+
+        coord_flip()+
+        theme(axis.text.y = element_text(size=6))
+g
+```
+
+
 
 
 
