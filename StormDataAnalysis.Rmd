@@ -46,7 +46,7 @@ The raw data were imported in R using the RStudio text editor. Review the code c
 <!--Data Import-->
 ```{r data import, echo=TRUE, results='hide', cache=TRUE}
 
-#Libraries One time only uncomment to run
+#Libraries
 library(tidyverse)
 library(knitr)
 
@@ -55,7 +55,7 @@ library(knitr)
 #download.file('https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2',destfile = './data/rawData.csv')
 
 #One time only uncomment to run
-rawData<-read.csv('/data/rawData.csv',stringsAsFactors = FALSE)
+#rawData<-read.csv('./data/rawData.csv',stringsAsFactors = FALSE)
 
 ```
 
