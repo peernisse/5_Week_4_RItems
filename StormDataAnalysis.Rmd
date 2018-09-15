@@ -1,30 +1,175 @@
 ---
-title: 'Storm Data Analysis - Coursera: Reproducible Research'
-author: "Peter EerNisse"
+title: 'Historical Data Analysis of Storm Effects on Human Health and Economy in United States'
+subtitle: 'Coursera Reproducible Research Assignment #2'
+author: "Peter EerNisse - https://github.com/peernisse/5_Week_4_RItems"
 date: "September 14, 2018"
-output: html_document
+output: 
+
+        html_document:
+                toc: TRUE
+                toc_float: TRUE
+                code_folding: hide
+
+
+
+
+
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+```{r setup, include=TRUE, echo=TRUE, warning= FALSE, results='hide'}
+knitr::opts_chunk$set(echo = TRUE,warning = FALSE,include=TRUE,error = FALSE)
+
 ```
 
-## R Markdown
+#Synopsis
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+Storms and other severe weather events can cause both public health and economic problems for communities and municipalities. Many severe events can result in fatalities, injuries, and property damage, and preventing such outcomes to the extent possible is a key concern.
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+This project involves exploring the U.S. National Oceanic and Atmospheric Administration's (NOAA) storm database. This database tracks characteristics of major storms and weather events in the United States, including when and where they occur, as well as estimates of any fatalities, injuries, and property damage.
 
-```{r cars}
-summary(cars)
+This analysis addresses the following objectives/questions:
+
+1. Across the United States, which types of events (as indicated in the EVTYPE variable) are most harmful with respect to population health?
+2. Across the United States, which types of events have the greatest economic consequences?
+
+#Data Processing
+
+Data and supporting information for the analysis are sourced from the National Oceanic and Atmoshperic Administration, provided as course materials by Coursera, and were downloaded from the following links: 
+
+* [Storm Data](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2)
+* [Storm Data Documentation](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf)
+* [National Climatic Data Center Storm Events FAQ](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2FNCDC%20Storm%20Events-FAQ%20Page.pdf)
+
+##Data Import and Cleanup
+The raw data were imported in R using the RStudio text editor. Review the code chunk below to see the download code. 
+
+<!--Data Import-->
+```{r data import, echo=TRUE, results='hide', cache=TRUE}
+
+#Libraries One time only uncomment to run
+library(tidyverse)
+library(knitr)
+
+#Connect and download data file
+#One time only to get csv file uncomment to run
+#download.file('https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2',destfile = './data/rawData.csv')
+
+#One time only uncomment to run
+rawData<-read.csv('/data/rawData.csv',stringsAsFactors = FALSE)
+
 ```
 
-## Including Plots
+#Data Analysis Methods
+The following questions are the objective of this analysis:
 
-You can also embed plots, for example:
+**Question 1:** *Across the United States, which types of events (as indicated in the EVTYPE variable) are most harmful with respect to population health?*
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+**Question 2:** *Across the United States, which types of events have the greatest economic consequences?*
+
+The approach used to ascertain a response to these questions from the given data was is as follows:
+
+The raw data were culled to include only necessary columns and to remove any event types that did not result in either 1) fatality, 2) injury, or 3) property damage.
+
+
+```{r data cleanup, cache=TRUE}
+#Reduce data source for analysis
+analData<-rawData %>% 
+        select(STATE,EVTYPE,BGN_DATE,FATALITIES,INJURIES,PROPDMG) %>% 
+        group_by(EVTYPE) %>% 
+        summarise(MinDate = min(BGN_DATE), MaxDate = max(BGN_DATE),NumberofEvents = length(BGN_DATE),SumFatality = sum(FATALITIES), SumInjury = sum(INJURIES), SumPropertyDamage = sum(PROPDMG)) %>% 
+        filter(SumFatality > 0 & SumInjury >0 & SumPropertyDamage >0)
+
+
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+Now the data have been grouped by event type, and any event types which have resulted in no human health consequences or property damage have been removed from the dataset. This leaves 93 event types that have historically been observed to have effects on one or more of the three parameters (i.e., fatality, injury, roperty damage). The number of observed effects in each of the three categories has been totalled by event type.
+
+Because the number of effects alone do not describe the likelihood that a particular storm event type will result in either of these three effects, another data manipulation required is to calculate the likelihood of these effects ocurring as a percentage of times they have ocurred per weather event (i.e., number of observed effects / number of storm type incidents).
+
+Finally, a category called HumanHealthLikelihood was created using a 0.5-weighted injury value added to fatality value as follows: HumanHealthLikelihood = SumFatality + 0.5*SumInjury)/NumberofEvents. This value is meant to represent overall effect on human health.
+
+```{r calc likelihood}
+
+resultsData<-analData %>% 
+        filter(NumberofEvents > 12) %>% 
+        mutate(InjuryLikelihood = round(SumInjury/NumberofEvents,3),
+               FatalityLikelihood = round(SumFatality/NumberofEvents,3),
+               HumanHealthLikelihood = round((SumFatality + 0.25*SumInjury)/NumberofEvents,3),
+               PropDamageLikelihood = round(SumPropertyDamage/NumberofEvents,3)) %>% 
+        select(EVTYPE,HumanHealthLikelihood,FatalityLikelihood,InjuryLikelihood,PropDamageLikelihood) %>% 
+        arrange(desc(HumanHealthLikelihood,FatalityLikelihood,InjuryLikelihood,PropDamageLikelihood))
+
+
+```
+
+
+#Results
+
+**Table 1.** Summary of impacts by event type.
+```{r table 1}
+
+kable(resultsData,format="markdown")
+
+```
+
+
+**Figure 1.** Summary of event type effect on human health likelihood (dimensionless). Values calculated as weighted sum of fatalities + 0.25*injuries/number of events. (Top 50 event types shown out of 76)
+
+```{r figure 1}
+gdata<-resultsData %>% select(EVTYPE, HumanHealthLikelihood) %>% arrange(HumanHealthLikelihood)
+
+gdata<-gdata[(nrow(gdata)-49):nrow(gdata),]
+
+
+levs<-gdata$EVTYPE
+gdata$EVTYPE<-factor(gdata$EVTYPE,levels=levs)
+
+
+g<- ggplot(gdata,aes(EVTYPE,HumanHealthLikelihood))+
+        geom_col(fill='orange')+
+        coord_flip()+
+        theme(axis.text.y = element_text(size=6))
+g
+```
+
+
+
+
+**Figure 2.** Summary of event type effect on property damage likelihood (dimensionless). (Top 50 event types shown out of 76)
+
+```{r figure 2}
+gdata<-resultsData %>% select(EVTYPE, PropDamageLikelihood) %>% arrange(PropDamageLikelihood)
+
+gdata<-gdata[(nrow(gdata)-49):nrow(gdata),]
+
+
+levs<-gdata$EVTYPE
+gdata$EVTYPE<-factor(gdata$EVTYPE,levels=levs)
+
+
+g<- ggplot(gdata,aes(EVTYPE,PropDamageLikelihood))+
+        geom_col(fill='wheat')+
+        coord_flip()+
+        theme(axis.text.y = element_text(size=6))
+g
+```
+
+
+#References
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

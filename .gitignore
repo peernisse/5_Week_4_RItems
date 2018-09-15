@@ -2,3 +2,7 @@
 .Rhistory
 .RData
 .Ruserdata
+/data
+/StormDataAnalysis_cache
+/StormDataAnalysis_files
+*.html
