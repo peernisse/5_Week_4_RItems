@@ -48,7 +48,7 @@ The raw data were imported in R using the RStudio text editor. Review the code c
 #Libraries
 library(tidyverse)
 library(knitr)
-library(dplyr)
+#library(dplyr)
 
 #Connect and download data file
 #One time only to get csv file uncomment to run
