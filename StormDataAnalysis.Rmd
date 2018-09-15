@@ -48,6 +48,7 @@ The raw data were imported in R using the RStudio text editor. Review the code c
 #Libraries
 library(tidyverse)
 library(knitr)
+library(dplyr)
 
 #Connect and download data file
 #One time only to get csv file uncomment to run
@@ -347,7 +348,7 @@ pdResultsData<-pdData %>%
 
 #Results
 
-**Figure 1.** Summary of injury impacts by event type.
+**Figure 1.** Summary of injury likelihood by event type.
 ```{r figure 1}
 gdata<-hhResultsData %>% select(newEventType, InjuryLikelihood) %>% arrange(InjuryLikelihood)
 
@@ -364,7 +365,7 @@ g
 ```
 
 
-**Figure 2.** Summary of fatality impacts by event type.
+**Figure 2.** Summary of fatality likelihood by event type.
 
 ```{r figure 2}
 gdata<-hhResultsData %>% select(newEventType, FatalityLikelihood) %>% arrange(FatalityLikelihood)
@@ -383,7 +384,7 @@ g
 
 
 
-**Figure 3.** Summary of event type effect on property damage likelihood (dollars/event). (Top 50 event types shown out of 135)
+**Figure 3.** Summary of average property damage in dollars by event type.
 
 ```{r figure 3}
 gdata<-pdResultsData %>% select(newEventType, PropDamageAve) %>% arrange(PropDamageAve)
