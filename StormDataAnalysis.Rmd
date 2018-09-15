@@ -73,11 +73,24 @@ The raw data were culled to include only necessary columns and to remove any eve
 
 ```{r data cleanup, cache=TRUE}
 #Reduce data source for analysis
+
+#Fix dates
+newdates<-strptime(rawData$BGN_DATE, format = '%m/%d/%Y')
+rawData$DATE<-as.POSIXct(newdates)
+
 analData<-rawData %>% 
-        select(STATE,EVTYPE,BGN_DATE,FATALITIES,INJURIES,PROPDMG) %>% 
+        select(STATE,EVTYPE,DATE,FATALITIES,INJURIES,PROPDMG,PROPDMGEXP) %>% 
+        filter(FATALITIES > 0 | INJURIES > 0 | PROPDMG > 0, PROPDMGEXP %in% c('K','B','M','m')) %>% 
+        mutate(DamageDollars = case_when(
+             PROPDMGEXP == 'K' ~    PROPDMG*1000,
+             PROPDMGEXP == 'M' ~    PROPDMG*1000000,
+             PROPDMGEXP == 'm' ~    PROPDMG*1000000,
+             PROPDMGEXP == 'B' ~    PROPDMG*1000000000
+             
+        )) %>% 
+        
         group_by(EVTYPE) %>% 
-        summarise(MinDate = min(BGN_DATE), MaxDate = max(BGN_DATE),NumberofEvents = length(BGN_DATE),SumFatality = sum(FATALITIES), SumInjury = sum(INJURIES), SumPropertyDamage = sum(PROPDMG)) %>% 
-        filter(SumFatality > 0 & SumInjury >0 & SumPropertyDamage >0)
+        summarise(MinDate = min(DATE), MaxDate = max(DATE),NumberofEvents = length(DATE),SumFatality = sum(FATALITIES), SumInjury = sum(INJURIES), SumPropertyDamage = sum(DamageDollars))
 
 
 ```
@@ -92,7 +105,7 @@ Finally, a category called HumanHealthLikelihood was created using a 0.5-weighte
 ```{r calc likelihood}
 
 resultsData<-analData %>% 
-        filter(NumberofEvents > 12) %>% 
+        filter(NumberofEvents > 1) %>% 
         mutate(InjuryLikelihood = round(SumInjury/NumberofEvents,3),
                FatalityLikelihood = round(SumFatality/NumberofEvents,3),
                HumanHealthLikelihood = round((SumFatality + 0.25*SumInjury)/NumberofEvents,3),
@@ -108,13 +121,13 @@ resultsData<-analData %>%
 
 **Table 1.** Summary of impacts by event type.
 ```{r table 1}
-
-kable(resultsData,format="markdown")
+kData<-arrange(resultsData,EVTYPE)
+kable(kData,format="markdown")
 
 ```
 
 
-**Figure 1.** Summary of event type effect on human health likelihood (dimensionless). Values calculated as weighted sum of fatalities + 0.25*injuries/number of events. (Top 50 event types shown out of 76)
+**Figure 1.** Summary of event type effect on human health likelihood (human health impact/event). Values calculated as weighted sum of fatalities + 0.25*injuries/number of events. (Top 50 event types shown out of 135)
 
 ```{r figure 1}
 gdata<-resultsData %>% select(EVTYPE, HumanHealthLikelihood) %>% arrange(HumanHealthLikelihood)
@@ -136,7 +149,7 @@ g
 
 
 
-**Figure 2.** Summary of event type effect on property damage likelihood (dimensionless). (Top 50 event types shown out of 76)
+**Figure 2.** Summary of event type effect on property damage likelihood (dollars/event). (Top 50 event types shown out of 135)
 
 ```{r figure 2}
 gdata<-resultsData %>% select(EVTYPE, PropDamageLikelihood) %>% arrange(PropDamageLikelihood)
